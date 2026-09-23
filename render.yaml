@@ -76,4 +76,10 @@ services:
 databases:
   - name: divine-solutions-db
     databaseName: divine_solutions
-    plan: starter
+    # No `plan` set deliberately: Render retired the old "starter" name for
+    # new Postgres databases and I can't verify their current plan slugs
+    # from here. Omitting this lets Render fall back to its own current
+    # default rather than guessing a name that might also be wrong. If
+    # Render still rejects the Blueprint, check Render's dashboard -> New ->
+    # PostgreSQL for the exact current plan names available on your account
+    # and add e.g. `plan: basic-256mb` (whatever it actually shows you).

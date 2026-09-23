@@ -1,0 +1,79 @@
+services:
+  - type: web
+    name: divine-solutions-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter
+    healthCheckPath: /api/health/
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_DEBUG
+        value: "False"
+      # After your first deploy, Render assigns this service a URL like
+      # divine-solutions-backend-xxxx.onrender.com -- come back and set the
+      # three values below (and the frontend's VITE_API_URL) to match it,
+      # or to your real custom domain once you attach one.
+      - key: DJANGO_ALLOWED_HOSTS
+        value: divine-solutions-backend.onrender.com
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://divine-solutions-frontend.onrender.com
+      - key: CSRF_TRUSTED_ORIGINS
+        value: https://divine-solutions-frontend.onrender.com
+      - key: DATABASE_URL
+        fromDatabase:
+          name: divine-solutions-db
+          property: connectionString
+      # Security hardening: change this to something private before going
+      # live -- it moves the built-in Django admin off its very predictable
+      # default path. This does NOT affect the CMS's own React admin login,
+      # which is controlled by the frontend's VITE_ADMIN_PATH instead.
+      - key: DJANGO_ADMIN_PATH
+        value: admin/django/
+      - key: WEB_CONCURRENCY
+        value: "3"
+      # Optional: set these (and switch EMAIL_BACKEND) for real outgoing
+      # email -- new-submission notifications and admin invite links.
+      # Without them, emails just print to this service's logs.
+      - key: EMAIL_BACKEND
+        value: django.core.mail.backends.console.EmailBackend
+      - key: DEFAULT_FROM_EMAIL
+        value: website@divinesolutions.care
+      - key: ADMIN_NOTIFICATION_EMAIL
+        value: Info@divinesolutions.care
+      # Used to build links inside emails (e.g. the admin first-login setup
+      # link). Update this once you know your frontend's real URL/domain.
+      - key: FRONTEND_URL
+        value: https://divine-solutions-frontend.onrender.com
+    disk:
+      name: media
+      mountPath: /app/media
+      sizeGB: 1
+
+  - type: web
+    name: divine-solutions-frontend
+    runtime: static
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: ./frontend/dist
+    envVars:
+      # Update this to match the backend service's actual URL (see note
+      # above), with /api on the end.
+      - key: VITE_API_URL
+        value: https://divine-solutions-backend.onrender.com/api
+      # Security hardening: change this to something private before going
+      # live, e.g. VITE_ADMIN_PATH=mgmt-7f2a91 -- moves the CMS admin login
+      # off the very guessable /admin/login.
+      - key: VITE_ADMIN_PATH
+        value: admin
+    routes:
+      # Client-side routing (React Router): any path not matching a real
+      # static file falls through to index.html so deep links work.
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+databases:
+  - name: divine-solutions-db
+    databaseName: divine_solutions
+    plan: starter

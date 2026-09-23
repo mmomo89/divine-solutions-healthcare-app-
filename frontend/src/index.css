@@ -1,0 +1,5 @@
+/* Minimal reset — most styling lives in styles/global.css and styles/admin.css */
+* { box-sizing: border-box; }
+body { margin: 0; }
+img { max-width: 100%; display: block; }
+button { font-family: inherit; }

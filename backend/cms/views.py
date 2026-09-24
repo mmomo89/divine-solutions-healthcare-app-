@@ -5,6 +5,8 @@ import json
 import secrets
 import zipfile
 
+from .extra_data_utils import format_extra_value, humanize_key
+
 from django.conf import settings as django_settings
 from django.contrib.auth.models import User
 from django.core.mail import EmailMessage, send_mail
@@ -474,7 +476,7 @@ def _notify_admin_of_submission(submission):
         f"Submitted: {submission.created_at.strftime('%B %d, %Y %I:%M %p') if submission.created_at else ''}",
     ]
     for key, val in (submission.extra_data or {}).items():
-        lines.append(f"{key.replace('_', ' ').title()}: {val}")
+        lines.append(f"{humanize_key(key)}: {format_extra_value(val, multiline=True)}")
     if submission.message:
         lines += ["", "Message:", submission.message]
     lines += ["", f"View in the admin CMS: Form Submissions \u2192 {submission.id}"]

@@ -20,6 +20,9 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from cms.extra_data_utils import format_extra_value, humanize_key
+from xml.sax.saxutils import escape as _xml_escape
+
 BRAND_PRIMARY = colors.HexColor("#1f2a24")
 BRAND_ACCENT = colors.HexColor("#9ad176")
 
@@ -57,6 +60,7 @@ def generate_submission_pdf(submission) -> bytes:
         "SectionHeading", parent=styles["Heading2"], textColor=BRAND_PRIMARY, fontSize=13, spaceBefore=14, spaceAfter=6,
     )
     body_style = ParagraphStyle("Body", parent=styles["Normal"], fontSize=10.5, leading=15)
+    cell_style = ParagraphStyle("Cell", parent=styles["Normal"], fontSize=9.5, leading=13)
 
     story = []
     story.append(Paragraph("Divine Solutions Healthcare LLC", title_style))
@@ -90,12 +94,17 @@ def generate_submission_pdf(submission) -> bytes:
 
     story.append(Paragraph("Submitted Information", heading_style))
     info_rows = [
-        ["Full Name", submission.full_name],
-        ["Email", submission.email],
-        ["Phone", submission.phone or "\u2014"],
+        ["Full Name", Paragraph(_xml_escape(submission.full_name or "\u2014"), cell_style)],
+        ["Email", Paragraph(_xml_escape(submission.email or "\u2014"), cell_style)],
+        ["Phone", Paragraph(_xml_escape(submission.phone or "\u2014"), cell_style)],
     ]
     for key, val in (submission.extra_data or {}).items():
-        info_rows.append([key.replace("_", " ").title(), str(val)])
+        formatted = format_extra_value(val, multiline=True)
+        # Escape first (so any literal &, <, > from user input is safe),
+        # THEN insert <br/> line-break markup -- doing it in the other
+        # order would escape our own <br/> tags into literal text.
+        formatted = _xml_escape(formatted).replace("\n", "<br/>")
+        info_rows.append([humanize_key(key), Paragraph(formatted, cell_style)])
 
     info_table = Table(info_rows, colWidths=[1.7 * inch, 4.3 * inch])
     info_table.setStyle(

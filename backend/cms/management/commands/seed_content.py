@@ -212,9 +212,7 @@ class Command(BaseCommand):
             page=home, section_type="card_grid", sort_order=1, heading="middle_cards",
             data={"cards": [
                 {"title": "Request a Consultation", "text": "Get personalized advice from our care team.",
-                 "link": "/home-health-care-request-a-consultation"},
-                {"title": "Insurance Verification", "text": "Confirm your insurance options with us.",
-                 "link": "/home-health-care-insurance-verification"},
+                 "link": "/home-health-care-contact-us"},
             ]},
         )
         PageSection.objects.create(
@@ -242,13 +240,17 @@ class Command(BaseCommand):
         PageSection.objects.create(
             page=home, section_type="vision", sort_order=5, heading="Vision Statement", body=VISION_TEXT,
         )
+        brochure_pdf = media(
+            "Flyer_DSH.pdf",
+            "Divine Solutions Healthcare LLC brochure",
+            "Divine Solutions Healthcare Brochure",
+        )
+        brochure_link = brochure_pdf.file.url if brochure_pdf else "/home-health-care-request-brochure"
         PageSection.objects.create(
             page=home, section_type="card_grid", sort_order=6, heading="bottom_cards",
             data={"cards": [
                 {"title": "Request Brochure", "text": "Learn more about our services in detail.",
-                 "link": "/home-health-care-request-brochure"},
-                {"title": "Billing Questions", "text": "Assistance with any billing or payment inquiries.",
-                 "link": "/home-health-care-billing-questions"},
+                 "link": brochure_link},
             ]},
         )
         PageSection.objects.create(

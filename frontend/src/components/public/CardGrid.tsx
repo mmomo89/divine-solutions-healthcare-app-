@@ -4,7 +4,11 @@ import Reveal from "./Reveal";
 
 interface CardData { title: string; text: string; link: string; }
 
-const isInternal = (link: string) => link.startsWith("/");
+// A link is an internal SPA route only when it points at another CMS page.
+// Links into /media/ (uploaded files such as PDFs) must be plain <a> tags so
+// the browser requests them directly instead of being swallowed by the
+// client-side router (which has no matching route and would 404).
+const isInternal = (link: string) => link.startsWith("/") && !link.includes("/media/");
 
 const CardGrid: React.FC<{ cards: CardData[] }> = ({ cards }) => (
   <div className="card-grid">
@@ -16,7 +20,7 @@ const CardGrid: React.FC<{ cards: CardData[] }> = ({ cards }) => (
             <p>{c.text}</p>
           </Link>
         ) : (
-          <a href={c.link} className="card">
+          <a href={c.link} className="card" target="_blank" rel="noopener noreferrer">
             <h3>{c.title}</h3>
             <p>{c.text}</p>
           </a>

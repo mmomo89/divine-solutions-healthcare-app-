@@ -241,7 +241,7 @@ class Command(BaseCommand):
             page=home, section_type="vision", sort_order=5, heading="Vision Statement", body=VISION_TEXT,
         )
         brochure_pdf = media(
-            "Flyer_DSH.pdf",
+            "Divine_Solutions_Healthcare_Brochure.pdf",
             "Divine Solutions Healthcare LLC brochure",
             "Divine Solutions Healthcare Brochure",
         )

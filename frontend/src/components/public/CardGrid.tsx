@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import Reveal from "./Reveal";
+import { resolveMediaUrl } from "../../config";
 
 interface CardData { title: string; text: string; link: string; }
 
@@ -20,7 +21,7 @@ const CardGrid: React.FC<{ cards: CardData[] }> = ({ cards }) => (
             <p>{c.text}</p>
           </Link>
         ) : (
-          <a href={c.link} className="card" target="_blank" rel="noopener noreferrer">
+          <a href={resolveMediaUrl(c.link)} className="card" target="_blank" rel="noopener noreferrer">
             <h3>{c.title}</h3>
             <p>{c.text}</p>
           </a>

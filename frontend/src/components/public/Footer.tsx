@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { useSiteData } from "../../context/SiteDataContext";
+import SocialLinks from "./SocialLinks";
 
 const Footer: React.FC = () => {
   const { settings, footerNav } = useSiteData();
@@ -46,14 +47,7 @@ const Footer: React.FC = () => {
               </div>
             </div>
 
-            <div className="social-row">
-              {settings.facebook_url && (
-                <a href={settings.facebook_url} target="_blank" rel="noopener noreferrer" aria-label="Facebook">f</a>
-              )}
-              {settings.instagram_url && (
-                <a href={settings.instagram_url} target="_blank" rel="noopener noreferrer" aria-label="Instagram">ig</a>
-              )}
-            </div>
+            <SocialLinks settings={settings} className="social-row" />
           </div>
 
           <div>
@@ -70,14 +64,7 @@ const Footer: React.FC = () => {
             <p style={{ color: "rgba(255,255,255,0.75)" }}>
               Follow along for updates, care tips, and stories from our community.
             </p>
-            <div className="social-row">
-              {settings.facebook_url && (
-                <a href={settings.facebook_url} target="_blank" rel="noopener noreferrer" aria-label="Facebook">f</a>
-              )}
-              {settings.instagram_url && (
-                <a href={settings.instagram_url} target="_blank" rel="noopener noreferrer" aria-label="Instagram">ig</a>
-              )}
-            </div>
+            <SocialLinks settings={settings} className="social-row" />
           </div>
         </div>
 

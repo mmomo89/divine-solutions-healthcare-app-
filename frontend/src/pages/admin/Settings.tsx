@@ -28,6 +28,7 @@ const Settings: React.FC = () => {
         map_embed_url: settings.map_embed_url,
         facebook_url: settings.facebook_url,
         instagram_url: settings.instagram_url,
+        linkedin_url: settings.linkedin_url,
         footer_tagline: settings.footer_tagline,
         copyright_text: settings.copyright_text,
         designer_credit: settings.designer_credit,
@@ -65,6 +66,7 @@ const Settings: React.FC = () => {
             <h2>Social Media</h2>
             <div className="adm-field"><label>Facebook URL</label><input value={settings.facebook_url} onChange={(e) => field("facebook_url", e.target.value)} /></div>
             <div className="adm-field"><label>Instagram URL</label><input value={settings.instagram_url} onChange={(e) => field("instagram_url", e.target.value)} /></div>
+            <div className="adm-field"><label>LinkedIn URL</label><input type="url" value={settings.linkedin_url} onChange={(e) => field("linkedin_url", e.target.value)} placeholder="https://www.linkedin.com/company/dsolutionshealthcare" /></div>
           </div>
 
           <div className="adm-panel">

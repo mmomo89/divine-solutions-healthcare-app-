@@ -92,6 +92,7 @@ export interface SiteSettings {
   tertiary_color: string;
   facebook_url: string;
   instagram_url: string;
+  linkedin_url: string;
   footer_tagline: string;
   copyright_text: string;
   display_copyright: string;

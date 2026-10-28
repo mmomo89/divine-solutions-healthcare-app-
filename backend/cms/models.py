@@ -95,6 +95,7 @@ class SiteSettings(TimeStampedModel):
 
     facebook_url = models.URLField(blank=True, default="https://www.facebook.com/divinesolutionshealthcarellc")
     instagram_url = models.URLField(blank=True, default="https://www.instagram.com/divinesolutionshealthcarellc")
+    linkedin_url = models.URLField(blank=True, default="https://www.linkedin.com/company/dsolutionshealthcare")
 
     footer_tagline = models.TextField(
         default="Contact us for more information, to schedule a consultation, or to learn more about how we can assist you."

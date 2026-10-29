@@ -202,7 +202,25 @@ class PageSection(TimeStampedModel):
     def __str__(self):
         return f"{self.page.slug} / {self.section_type} #{self.sort_order}"
 
+class PageDraft(TimeStampedModel):
+    """Unpublished working copy of a page and its sections."""
 
+    page = models.OneToOneField(
+        Page,
+        on_delete=models.CASCADE,
+        related_name="content_draft",
+    )
+    content = models.JSONField(default=dict, blank=True)
+    updated_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+
+    def __str__(self):
+        return f"Draft: {self.page.slug}"
 class Service(TimeStampedModel):
     STATUS_CHOICES = [("draft", "Draft"), ("published", "Published"), ("archived", "Archived")]
     REGION_CHOICES = [("ohio", "Ohio"), ("north_dakota", "North Dakota"), ("home", "Home Highlight")]

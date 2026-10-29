@@ -20,6 +20,106 @@ const templateFor = (submission: FormSubmission): { subject: string; body: strin
   };
 };
 
+
+const formatFieldLabel = (key: string): string => {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const renderFieldValue = (value: unknown): React.ReactNode => {
+  if (value === null || value === undefined || value === "") {
+    return <span className="muted">—</span>;
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    return (
+      <span style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+        {String(value)}
+      </span>
+    );
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return <span className="muted">—</span>;
+    }
+
+    const containsObjects = value.some(
+      (item) => item !== null && typeof item === "object"
+    );
+
+    if (containsObjects) {
+      return (
+        <div style={{ display: "grid", gap: 12 }}>
+          {value.map((item, index) => (
+            <div
+              key={index}
+              style={{
+                border: "1px solid var(--adm-border)",
+                borderRadius: 8,
+                padding: 12,
+              }}
+            >
+              <strong style={{ display: "block", marginBottom: 8 }}>
+                Record {index + 1}
+              </strong>
+              {renderFieldValue(item)}
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    return (
+      <ul style={{ margin: 0, paddingLeft: 20 }}>
+        {value.map((item, index) => (
+          <li key={index} style={{ marginBottom: 4 }}>
+            {renderFieldValue(item)}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+
+    if (entries.length === 0) {
+      return <span className="muted">—</span>;
+    }
+
+    return (
+      <div style={{ display: "grid", gap: 8 }}>
+        {entries.map(([key, nestedValue]) => (
+          <div
+            key={key}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(110px, 0.8fr) minmax(0, 2fr)",
+              gap: 12,
+              paddingBottom: 6,
+              borderBottom: "1px solid var(--adm-border)",
+            }}
+          >
+            <strong>{formatFieldLabel(key)}</strong>
+            <div>{renderFieldValue(nestedValue)}</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return String(value);
+};
+
 const SubmissionDetail: React.FC = () => {
   const { id } = useParams();
   const [submission, setSubmission] = useState<FormSubmission | null>(null);
@@ -186,21 +286,14 @@ const SubmissionDetail: React.FC = () => {
               <tr><th>Full Name</th><td>{submission.full_name}</td></tr>
               <tr><th>Email</th><td>{submission.email}</td></tr>
               <tr><th>Phone</th><td>{submission.phone || "\u2014"}</td></tr>
-              {Object.entries(submission.extra_data || {}).map(([k, v]) => {
-                const displayValue =
-                  v == null ? "—" :
-                  typeof v === "string" ? v :
-                  JSON.stringify(v, null, 2);
-
-                return (
-                  <tr key={k}>
-                    <th style={{ textTransform: "capitalize" }}>{k.replace(/_/g, " ")}</th>
-                    <td style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
-                      {displayValue}
-                    </td>
-                  </tr>
-                );
-              })}
+              {Object.entries(submission.extra_data || {}).map(([key, value]) => (
+                <tr key={key}>
+                  <th>{formatFieldLabel(key)}</th>
+                  <td style={{ overflowWrap: "anywhere", verticalAlign: "top" }}>
+                    {renderFieldValue(value)}
+                  </td>
+                </tr>
+              ))}
               <tr><th>Message</th><td>{submission.message || "\u2014"}</td></tr>
               {submission.resume_url && (
                 <tr><th>Resume</th><td><a href={submission.resume_url} target="_blank" rel="noopener noreferrer">Download Resume</a></td></tr>

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "../../api/client";
+import { adminPath } from "../../config";
 import type { Page } from "../../types";
 
 interface NewPageForm {
@@ -49,7 +50,7 @@ const PagesList: React.FC = () => {
         breadcrumb_label: creating.breadcrumb_label || creating.title,
         status: creating.status,
       });
-      navigate(`/admin/pages/${res.data.slug}`);
+      navigate(adminPath(`/pages/${res.data.slug}`));
     } catch (err: any) {
       const data = err?.response?.data;
       setMessage({ ok: false, text: (data && Object.values(data).flat().join(" ")) || "Could not create page." });
@@ -126,13 +127,13 @@ const PagesList: React.FC = () => {
             <tbody>
               {pages.map((p) => (
                 <tr key={p.id}>
-                  <td><Link className="row-link" to={`/admin/pages/${p.slug}`}>{p.title}</Link></td>
+                  <td><Link className="row-link" to={adminPath(`/pages/${p.slug}`)}>{p.title}</Link></td>
                   <td className="muted">/{p.slug === "home" ? "" : p.slug}</td>
                   <td><span className={`adm-badge ${p.status}`}>{p.status}</span></td>
                   <td>{p.sections?.length ?? 0}</td>
                   <td className="muted">{"updated_at" in p ? new Date((p as any).updated_at).toLocaleDateString() : ""}</td>
                   <td style={{ display: "flex", gap: 8 }}>
-                    <Link className="adm-btn small secondary" to={`/admin/pages/${p.slug}`}>Edit</Link>
+                    <Link className="adm-btn small secondary" to={adminPath(`/pages/${p.slug}`)}>Edit</Link>
                     <button className="adm-btn small danger" onClick={() => remove(p)}>Delete</button>
                   </td>
                 </tr>

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import api from "../../api/client";
+import { adminPath } from "../../config";
 import type { FormSubmission, SubmissionReply } from "../../types";
 
 const STATUS_FLOW: FormSubmission["status"][] = ["new", "read", "in_progress", "completed", "archived"];
@@ -22,6 +23,8 @@ const templateFor = (submission: FormSubmission): { subject: string; body: strin
 const SubmissionDetail: React.FC = () => {
   const { id } = useParams();
   const [submission, setSubmission] = useState<FormSubmission | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -31,27 +34,64 @@ const SubmissionDetail: React.FC = () => {
   const [sending, setSending] = useState(false);
   const [replyResult, setReplyResult] = useState<{ ok: boolean; message: string } | null>(null);
 
-  const load = () => {
-    api.get(`/submissions/${id}/`).then((res) => {
-      setSubmission(res.data);
-      setNotes(res.data.admin_notes || "");
-      if (res.data.status === "new") {
-        api.patch(`/submissions/${id}/`, { status: "read" }).then((r) => setSubmission(r.data));
+  const load = async () => {
+    setLoading(true);
+    setLoadError("");
+
+    try {
+      const { data } = await api.get(`/submissions/${id}/`);
+      setSubmission(data);
+      setNotes(data.admin_notes || "");
+
+      if (data.status === "new") {
+        try {
+          const updated = await api.patch(`/submissions/${id}/`, { status: "read" });
+          setSubmission(updated.data);
+        } catch {
+          // Keep the submission visible even if marking it as read fails.
+        }
       }
+
       if (!replySubject && !replyBody) {
-        const t = templateFor(res.data);
+        const t = templateFor(data);
         setReplySubject(t.subject);
         setReplyBody(t.body);
       }
-    });
-    loadReplies();
+
+      try {
+        const replyResponse = await api.get(`/submissions/${id}/replies/`);
+        setReplies(replyResponse.data);
+      } catch {
+        setReplies([]);
+      }
+    } catch (err: any) {
+      const status = err?.response?.status;
+      if (status === 404) {
+        setLoadError("This submission could not be found. It may have been deleted.");
+      } else if (status === 401 || status === 403) {
+        setLoadError("You do not have permission to view this submission. Please sign in again.");
+      } else if (!err?.response) {
+        setLoadError("Could not connect to the server. Check your connection and try again.");
+      } else {
+        setLoadError(`The submission could not be loaded (HTTP ${status || "error"}).`);
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const loadReplies = () => {
-    api.get(`/submissions/${id}/replies/`).then((res) => setReplies(res.data));
+  const loadReplies = async () => {
+    try {
+      const { data } = await api.get(`/submissions/${id}/replies/`);
+      setReplies(data);
+    } catch {
+      setReplies([]);
+    }
   };
 
-  useEffect(load, [id]);
+  useEffect(() => {
+    void load();
+  }, [id]);
 
   const setStatus = async (status: string) => {
     const { data } = await api.patch(`/submissions/${id}/`, { status });
@@ -105,14 +145,27 @@ const SubmissionDetail: React.FC = () => {
       });
   };
 
-  if (!submission) return <div className="adm-empty">Loading{"\u2026"}</div>;
+  if (loading) return <div className="adm-empty">Loading submission…</div>;
+
+  if (!submission) {
+    return (
+      <div className="adm-panel">
+        <h1>Unable to Open Submission</h1>
+        <p role="alert">{loadError || "The submission could not be loaded."}</p>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button className="adm-btn" onClick={() => void load()}>Try Again</button>
+          <Link to={adminPath("/submissions")} className="adm-btn secondary">Back to List</Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
       <div className="adm-page-title adm-no-print">
         <h1>Submission Detail</h1>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Link to="/admin/submissions" className="adm-btn secondary">Back to List</Link>
+          <Link to={adminPath("/submissions")} className="adm-btn secondary">Back to List</Link>
           <button className="adm-btn secondary" onClick={() => window.print()}>Print</button>
           <button className="adm-btn" onClick={downloadPdf}>Download PDF</button>
         </div>
@@ -133,9 +186,21 @@ const SubmissionDetail: React.FC = () => {
               <tr><th>Full Name</th><td>{submission.full_name}</td></tr>
               <tr><th>Email</th><td>{submission.email}</td></tr>
               <tr><th>Phone</th><td>{submission.phone || "\u2014"}</td></tr>
-              {Object.entries(submission.extra_data || {}).map(([k, v]) => (
-                <tr key={k}><th style={{ textTransform: "capitalize" }}>{k.replace(/_/g, " ")}</th><td>{String(v)}</td></tr>
-              ))}
+              {Object.entries(submission.extra_data || {}).map(([k, v]) => {
+                const displayValue =
+                  v == null ? "—" :
+                  typeof v === "string" ? v :
+                  JSON.stringify(v, null, 2);
+
+                return (
+                  <tr key={k}>
+                    <th style={{ textTransform: "capitalize" }}>{k.replace(/_/g, " ")}</th>
+                    <td style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+                      {displayValue}
+                    </td>
+                  </tr>
+                );
+              })}
               <tr><th>Message</th><td>{submission.message || "\u2014"}</td></tr>
               {submission.resume_url && (
                 <tr><th>Resume</th><td><a href={submission.resume_url} target="_blank" rel="noopener noreferrer">Download Resume</a></td></tr>

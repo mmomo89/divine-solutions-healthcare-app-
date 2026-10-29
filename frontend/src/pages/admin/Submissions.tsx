@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../../api/client";
+import { adminPath } from "../../config";
 import type { FormSubmission } from "../../types";
 
 const Submissions: React.FC = () => {
@@ -133,13 +134,13 @@ const Submissions: React.FC = () => {
               {items.map((s) => (
                 <tr key={s.id}>
                   <td><input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSelected(s.id)} /></td>
-                  <td><Link className="row-link" to={`/admin/submissions/${s.id}`}>{s.full_name}</Link></td>
+                  <td><Link className="row-link" to={adminPath(`/submissions/${s.id}`)}>{s.full_name}</Link></td>
                   <td className="muted">{s.email}</td>
                   <td>{s.form_type}</td>
                   <td><span className={`adm-badge ${s.status}`}>{s.status.replace("_", " ")}</span></td>
                   <td className="muted">{s.source_page}</td>
                   <td className="muted">{new Date(s.created_at).toLocaleString()}</td>
-                  <td><Link className="adm-btn small secondary" to={`/admin/submissions/${s.id}`}>Open</Link></td>
+                  <td><Link className="adm-btn small secondary" to={adminPath(`/submissions/${s.id}`)}>Open</Link></td>
                 </tr>
               ))}
             </tbody>

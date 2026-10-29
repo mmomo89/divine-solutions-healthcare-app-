@@ -28,6 +28,7 @@ from .models import (
     MediaItem,
     NavigationItem,
     Page,
+    PageDraft,
     PageSection,
     Resource,
     Service,
@@ -211,6 +212,210 @@ class PageViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         log_activity(self.request, "page_deleted", f"Deleted page '{instance.title}'")
         instance.delete()
+
+
+    @action(detail=True, methods=["get", "put"], permission_classes=[IsAuthenticatedAdmin])
+    def draft(self, request, slug=None):
+        """Read or save a separate unpublished copy of this page."""
+        from django.db import transaction
+
+        page = self.get_object()
+
+        def snapshot():
+            page.refresh_from_db()
+            sections = []
+            for section in page.sections.order_by("sort_order", "id"):
+                sections.append({
+                    "id": section.id,
+                    "section_type": section.section_type,
+                    "heading": section.heading,
+                    "subheading": section.subheading,
+                    "body": section.body,
+                    "image": section.image_id,
+                    "cta_text": section.cta_text,
+                    "cta_link": section.cta_link,
+                    "anchor_id": section.anchor_id,
+                    "data": section.data or {},
+                    "is_visible": section.is_visible,
+                    "sort_order": section.sort_order,
+                })
+            return {
+                "slug": page.slug,
+                "title": page.title,
+                "status": page.status,
+                "breadcrumb_label": page.breadcrumb_label,
+                "seo_title": page.seo_title,
+                "meta_description": page.meta_description,
+                "og_image": page.og_image_id,
+                "hero_image": page.hero_image_id,
+                "hero_heading": page.hero_heading,
+                "hero_subheading": page.hero_subheading,
+                "sections": sections,
+            }
+
+        with transaction.atomic():
+            draft, created = PageDraft.objects.get_or_create(
+                page=page,
+                defaults={"content": snapshot(), "updated_by": request.user},
+            )
+
+            if request.method == "GET":
+                return Response({
+                    "page_slug": page.slug,
+                    "content": draft.content,
+                    "updated_at": draft.updated_at,
+                    "updated_by": draft.updated_by_id,
+                })
+
+            content = request.data.get("content", request.data)
+            if not isinstance(content, dict):
+                return Response(
+                    {"detail": "Draft content must be a JSON object."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            required = {
+                "title", "breadcrumb_label", "seo_title", "meta_description",
+                "og_image", "hero_image", "hero_heading", "hero_subheading",
+                "status", "sections",
+            }
+            missing = required.difference(content)
+            if missing:
+                return Response(
+                    {"detail": "Draft is missing required fields.", "missing": sorted(missing)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not isinstance(content["sections"], list):
+                return Response(
+                    {"detail": "sections must be a list."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            draft.content = content
+            draft.updated_by = request.user
+            draft.save(update_fields=["content", "updated_by", "updated_at"])
+            log_activity(request, "page_draft_saved", f"Saved draft for page '{page.slug}'")
+            return Response({
+                "detail": "Draft saved. The public page has not changed.",
+                "page_slug": page.slug,
+                "content": draft.content,
+                "updated_at": draft.updated_at,
+            })
+
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticatedAdmin], url_path="publish-draft")
+    def publish_draft(self, request, slug=None):
+        """Apply a saved draft to the live page in one database transaction."""
+        from django.db import transaction
+        from django.core.exceptions import ValidationError
+
+        page = self.get_object()
+
+        try:
+            with transaction.atomic():
+                draft = PageDraft.objects.select_for_update().get(page=page)
+                content = draft.content
+                if not isinstance(content, dict) or not isinstance(content.get("sections"), list):
+                    return Response(
+                        {"detail": "Draft content is invalid. Save a valid draft before publishing."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                allowed_page_fields = (
+                    "title", "breadcrumb_label", "seo_title", "meta_description",
+                    "hero_heading", "hero_subheading", "status",
+                )
+                for field in allowed_page_fields:
+                    if field in content:
+                        setattr(page, field, content[field])
+
+                for field in ("og_image", "hero_image"):
+                    if field in content:
+                        value = content[field]
+                        if value in ("", None):
+                            setattr(page, f"{field}_id", None)
+                        else:
+                            media = MediaItem.objects.filter(pk=value).first()
+                            if not media:
+                                raise ValueError(f"Media item {value} does not exist.")
+                            setattr(page, f"{field}_id", media.pk)
+
+                page.save()
+
+                existing = {section.id: section for section in page.sections.all()}
+                retained_ids = set()
+
+                allowed_section_fields = (
+                    "section_type", "heading", "subheading", "body",
+                    "cta_text", "cta_link", "anchor_id", "data",
+                    "is_visible", "sort_order",
+                )
+
+                valid_types = {choice[0] for choice in PageSection.SECTION_TYPES}
+
+                for index, item in enumerate(content["sections"]):
+                    if not isinstance(item, dict):
+                        raise ValueError(f"Section at index {index} must be an object.")
+
+                    section_id = item.get("id")
+                    if section_id:
+                        section = existing.get(section_id)
+                        if not section:
+                            raise ValueError(
+                                f"Section {section_id} does not belong to page '{page.slug}'."
+                            )
+                    else:
+                        section = PageSection(page=page)
+
+                    section_type = item.get("section_type", section.section_type or "")
+                    if section_type not in valid_types:
+                        raise ValueError(f"Invalid section type: {section_type}")
+
+                    section.section_type = section_type
+                    for field in allowed_section_fields:
+                        if field in item and field != "section_type":
+                            setattr(section, field, item[field])
+
+                    if "image" in item:
+                        image_id = item["image"]
+                        if image_id in ("", None):
+                            section.image_id = None
+                        else:
+                            media = MediaItem.objects.filter(pk=image_id).first()
+                            if not media:
+                                raise ValueError(f"Media item {image_id} does not exist.")
+                            section.image_id = media.pk
+
+                    section.full_clean()
+                    section.save()
+                    retained_ids.add(section.pk)
+
+                PageSection.objects.filter(page=page).exclude(
+                    pk__in=retained_ids
+                ).delete()
+
+                draft.delete()
+                log_activity(
+                    request,
+                    "page_published",
+                    f"Published draft for page '{page.slug}'",
+                )
+
+        except PageDraft.DoesNotExist:
+            return Response(
+                {"detail": "No saved draft exists for this page."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except (ValueError, ValidationError, TypeError) as exc:
+            return Response(
+                {"detail": f"Draft could not be published: {exc}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        page.refresh_from_db()
+        return Response({
+            "detail": "Draft published successfully.",
+            "page": PageSerializer(page, context={"request": request}).data,
+        })
 
 
 class PageSectionViewSet(viewsets.ModelViewSet):

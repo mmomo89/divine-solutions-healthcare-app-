@@ -23,6 +23,7 @@ const PageEditor: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [addingType, setAddingType] = useState("text");
+  const [draftPreview, setDraftPreview] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -37,12 +38,55 @@ const PageEditor: React.FC = () => {
 
     try {
       const res = await api.get(`/pages/${slug}/`);
-      setPage(res.data);
-      setSections(
-        [...(res.data.sections || [])].sort(
-          (a: PageSection, b: PageSection) => a.sort_order - b.sort_order
-        )
+      const draftRes = await api.get(`/pages/${slug}/draft/`);
+      const content = draftRes.data.content || {};
+      const liveSections: PageSection[] = res.data.sections || [];
+
+      let mediaById: Record<number, string> = {};
+      try {
+        const mediaRes = await api.get("/media/");
+        const mediaItems = Array.isArray(mediaRes.data)
+          ? mediaRes.data
+          : mediaRes.data.results || [];
+        mediaById = Object.fromEntries(
+          mediaItems.filter((item: any) => item.url).map((item: any) => [item.id, item.url])
+        );
+      } catch {
+        // Keep the editor usable if media listing is temporarily unavailable.
+      }
+
+      const draftSections: PageSection[] = (content.sections || []).map(
+        (section: any, index: number) => {
+          const liveSection = liveSections.find((item) => item.id === section.id);
+          const imageUrl = section.image
+            ? mediaById[section.image] ||
+              (liveSection?.image === section.image ? liveSection?.image_url ?? null : null)
+            : null;
+
+          return {
+            ...liveSection,
+            ...section,
+            id: section.id ?? -(Date.now() + index),
+            page: res.data.id,
+            image_url: imageUrl,
+            slide_image_urls: liveSection?.slide_image_urls || [],
+            data: section.data || {},
+          };
+        },
       );
+
+      const draftHeroImageUrl = content.hero_image
+        ? mediaById[content.hero_image] ||
+          (content.hero_image === res.data.hero_image ? res.data.hero_image_url : null)
+        : null;
+
+      setPage({
+        ...res.data,
+        ...content,
+        hero_image_url: draftHeroImageUrl,
+        sections: draftSections,
+      });
+      setSections(draftSections.sort((a, b) => a.sort_order - b.sort_order));
     } catch (err: any) {
       const status = err?.response?.status;
       if (status === 404) {
@@ -78,49 +122,83 @@ const PageEditor: React.FC = () => {
     );
   }
 
-  const updatePageField = (field: keyof Page, value: any) => setPage({ ...page, [field]: value });
+  const updatePageField = (field: keyof Page, value: any) => {
+    setPage((current) => current ? { ...current, [field]: value } : current);
+  };
 
-  const savePage = async () => {
+  const saveDraft = async (showMessage = true): Promise<boolean> => {
+    if (!page) return false;
     setSaving(true);
     setMessage("");
     try {
-      await api.patch(`/pages/${page.slug}/`, {
+      const content = {
         title: page.title,
+        breadcrumb_label: page.breadcrumb_label,
         seo_title: page.seo_title,
         meta_description: page.meta_description,
+        og_image: (page as any).og_image ?? null,
+        hero_image: page.hero_image,
         hero_heading: page.hero_heading,
         hero_subheading: page.hero_subheading,
-        breadcrumb_label: page.breadcrumb_label,
         status: page.status,
-      });
-      setMessage("Page saved.");
+        sections: sections.map((section) => {
+          const item: Record<string, any> = {
+            section_type: section.section_type,
+            heading: section.heading,
+            subheading: section.subheading,
+            body: section.body,
+            image: section.image,
+            cta_text: section.cta_text,
+            cta_link: section.cta_link,
+            anchor_id: section.anchor_id,
+            data: section.data || {},
+            is_visible: section.is_visible,
+            sort_order: section.sort_order,
+          };
+          if (section.id > 0) item.id = section.id;
+          return item;
+        }),
+      };
+
+      await api.put(`/pages/${page.slug}/draft/`, { content });
+      if (showMessage) setMessage("Draft saved. The live website has not changed.");
+      return true;
+    } catch (err: any) {
+      setMessage(err?.response?.data?.detail || "Could not save the draft.");
+      return false;
     } finally {
       setSaving(false);
     }
   };
+
+  const publishDraft = async () => {
+    if (!page) return;
+    if (!confirm("Publish this saved draft to the live website? Visitors will see these changes.")) return;
+
+    const saved = await saveDraft(false);
+    if (!saved) return;
+
+    setSaving(true);
+    setMessage("");
+    try {
+      await api.post(`/pages/${page.slug}/publish-draft/`, {});
+      setMessage("Draft published successfully.");
+      setDraftPreview(false);
+      await load();
+    } catch (err: any) {
+      setMessage(err?.response?.data?.detail || "Could not publish the draft.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
 
   const updateSectionField = (id: number, field: keyof PageSection, value: any) => {
     setSections((secs) => secs.map((s) => (s.id === id ? { ...s, [field]: value } : s)));
   };
 
   const saveSection = async (section: PageSection) => {
-    setSaving(true);
-    setMessage("");
-    try {
-      await api.patch(`/page-sections/${section.id}/`, {
-        heading: section.heading,
-        subheading: section.subheading,
-        body: section.body,
-        cta_text: section.cta_text,
-        cta_link: section.cta_link,
-        anchor_id: section.anchor_id,
-        is_visible: section.is_visible,
-        sort_order: section.sort_order,
-      });
-      setMessage(`Section "${SECTION_LABELS[section.section_type] || section.section_type}" saved.`);
-    } finally {
-      setSaving(false);
-    }
+    setMessage(`Section "${SECTION_LABELS[section.section_type] || section.section_type}" updated locally. Select Save Draft to store your changes.`);
   };
 
   const uploadSectionImage = async (section: PageSection, file: File) => {
@@ -129,70 +207,62 @@ const PageEditor: React.FC = () => {
     try {
       const form = new FormData();
       form.append("file", file);
-      form.append("title", `${page.title} \u2014 ${SECTION_LABELS[section.section_type] || section.section_type}`);
-      const mediaRes = await api.post("/media/", form, { headers: { "Content-Type": "multipart/form-data" } });
-      await api.patch(`/page-sections/${section.id}/`, { image: mediaRes.data.id });
-      setMessage("Image uploaded.");
-      load();
-    } catch {
-      setMessage("Could not upload image.");
+      form.append("title", `${page?.title || "Page"} — ${SECTION_LABELS[section.section_type] || section.section_type}`);
+      const mediaRes = await api.post("/media/", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setSections((secs) => secs.map((item) => item.id === section.id
+        ? { ...item, image: mediaRes.data.id, image_url: mediaRes.data.url }
+        : item));
+      setMessage("Image uploaded to media library and selected for this draft. Save Draft to store the change.");
+    } catch (err: any) {
+      setMessage(err?.response?.data?.detail || "Could not upload image.");
     } finally {
       setSaving(false);
     }
   };
 
   const removeSectionImage = async (section: PageSection) => {
-    await api.patch(`/page-sections/${section.id}/`, { image: null });
-    load();
+    setSections((secs) => secs.map((item) => item.id === section.id
+      ? { ...item, image: null, image_url: null }
+      : item));
+    setMessage("Image removal selected for this draft. Save Draft to store the change.");
   };
 
   const addSection = async () => {
-    setSaving(true);
-    setMessage("");
-    try {
-      await api.post("/page-sections/", {
-        page: page.id,
-        section_type: addingType,
-        heading: "",
-        subheading: "",
-        body: "",
-        cta_text: "",
-        cta_link: "",
-        anchor_id: "",
-        is_visible: true,
-        sort_order: sections.length,
-        data: addingType === "card_grid" ? { cards: [] } : {},
-      });
-      setMessage("Section added \u2014 edit its content below.");
-      load();
-    } catch (err: any) {
-      setMessage(err?.response?.data?.detail || "Could not add section.");
-    } finally {
-      setSaving(false);
-    }
+    if (!page) return;
+    const newSection: PageSection = {
+      id: -Date.now(),
+      page: page.id,
+      section_type: addingType,
+      heading: "",
+      subheading: "",
+      body: "",
+      image: null,
+      image_url: null,
+      slide_image_urls: [],
+      cta_text: "",
+      cta_link: "",
+      anchor_id: "",
+      data: addingType === "card_grid" ? { cards: [] } : {},
+      is_visible: true,
+      sort_order: sections.length,
+    };
+    setSections((current) => [...current, newSection]);
+    setMessage("Section added to the draft. Select Save Draft to store your changes.");
   };
 
   const deleteSection = async (section: PageSection) => {
-    if (!confirm(`Delete this ${SECTION_LABELS[section.section_type] || section.section_type} section? This cannot be undone.`)) return;
-    try {
-      await api.delete(`/page-sections/${section.id}/`);
-      load();
-    } catch {
-      setMessage("Could not delete this section.");
-    }
+    if (!confirm(`Remove this ${SECTION_LABELS[section.section_type] || section.section_type} section from the draft?`)) return;
+    setSections((current) => current
+      .filter((item) => item.id !== section.id)
+      .map((item, index) => ({ ...item, sort_order: index })));
+    setMessage("Section removed from the draft. Select Save Draft to store your changes.");
   };
 
   const handleReorder = async (newOrder: PageSection[]) => {
-    const withOrder = newOrder.map((s, i) => ({ ...s, sort_order: i }));
-    setSections(withOrder);
-    try {
-      await api.post("/page-sections/reorder/", {
-        items: withOrder.map((s) => ({ id: s.id, sort_order: s.sort_order })),
-      });
-      setMessage("Section order updated.");
-    } catch {
-      setMessage("Could not save the new order \u2014 please try again.");
-    }
+    setSections(newOrder.map((section, index) => ({ ...section, sort_order: index })));
+    setMessage("Section order updated locally. Select Save Draft to store your changes.");
   };
 
   const publicUrl = page.slug === "home" ? "/" : `/${page.slug}`;
@@ -202,12 +272,43 @@ const PageEditor: React.FC = () => {
       <div className="adm-page-title">
         <h1>Edit Page: {page.title}</h1>
         <div style={{ display: "flex", gap: 10 }}>
-          <a className="adm-btn secondary" href={publicUrl} target="_blank" rel="noreferrer">Preview</a>
-          <button className="adm-btn" onClick={savePage} disabled={saving}>Save Page Details</button>
+          <a className="adm-btn secondary" href={publicUrl} target="_blank" rel="noreferrer">View Live Page</a>
+          <button className="adm-btn secondary" onClick={() => setDraftPreview((value) => !value)} disabled={saving}>
+            {draftPreview ? "Hide Draft Preview" : "Preview Draft"}
+          </button>
+          <button className="adm-btn" onClick={() => void saveDraft()} disabled={saving}>
+            {saving ? "Saving…" : "Save Draft"}
+          </button>
+          <button className="adm-btn" onClick={() => void publishDraft()} disabled={saving}>
+            Publish
+          </button>
         </div>
       </div>
 
       {message && <div className="adm-alert success">{message}</div>}
+
+      {draftPreview && (
+        <div className="adm-panel" style={{ marginBottom: 18 }}>
+          <h2>Draft Preview</h2>
+          <p className="muted">This is a content preview of your unpublished draft. The public page is unchanged until you publish.</p>
+          <h3>{page.hero_heading || page.title}</h3>
+          {page.hero_subheading && <p>{page.hero_subheading}</p>}
+          {page.hero_image_url && (
+            <img src={page.hero_image_url} alt="" style={{ maxWidth: "100%", maxHeight: 260, objectFit: "cover", borderRadius: 8 }} />
+          )}
+          {sections.filter((section) => section.is_visible).map((section) => (
+            <div key={section.id} style={{ borderTop: "1px solid var(--adm-border, #ddd)", paddingTop: 12, marginTop: 12 }}>
+              {section.heading && <h3>{section.heading}</h3>}
+              {section.subheading && <h4>{section.subheading}</h4>}
+              {section.body && <p style={{ whiteSpace: "pre-wrap" }}>{section.body}</p>}
+              {section.image_url && (
+                <img src={section.image_url} alt="" style={{ maxWidth: "100%", maxHeight: 220, objectFit: "cover", borderRadius: 8 }} />
+              )}
+              {section.cta_text && <p><strong>{section.cta_text}</strong> {section.cta_link}</p>}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="adm-two-col">
         <div>
@@ -356,7 +457,7 @@ const PageEditor: React.FC = () => {
                   <img src={page.hero_image_url} alt="" style={{ width: 80, height: 50, objectFit: "cover", borderRadius: 6 }} />
                   <button
                     className="adm-btn small secondary"
-                    onClick={async () => { await api.patch(`/pages/${page.slug}/`, { hero_image: null }); load(); }}
+                    onClick={() => { updatePageField("hero_image", null); updatePageField("hero_image_url" as keyof Page, null); setMessage("Hero image removal selected for this draft. Save Draft to store the change."); }}
                   >
                     Remove
                   </button>
@@ -375,8 +476,9 @@ const PageEditor: React.FC = () => {
                       form.append("file", f);
                       form.append("title", `${page.title} hero`);
                       const mediaRes = await api.post("/media/", form, { headers: { "Content-Type": "multipart/form-data" } });
-                      await api.patch(`/pages/${page.slug}/`, { hero_image: mediaRes.data.id });
-                      load();
+                      updatePageField("hero_image", mediaRes.data.id);
+                      updatePageField("hero_image_url" as keyof Page, mediaRes.data.url);
+                      setMessage("Hero image uploaded and selected for this draft. Save Draft to store the change.");
                     }}
                   />
                 </label>

@@ -13,7 +13,7 @@ import Careers from "./pages/public/Careers";
 import Resources from "./pages/public/Resources";
 import Contact from "./pages/public/Contact";
 import GenericPage from "./pages/public/GenericPage";
-import ServiceDetail from "./pages/public/ServiceDetail";
+import PublicSlugResolver from "./pages/public/PublicSlugResolver";
 import NotFound from "./pages/public/NotFound";
 
 import AdminLayout, { ProtectedRoute } from "./components/admin/AdminLayout";
@@ -66,7 +66,7 @@ const App: React.FC = () => (
         <Route path="/home-health-care-billing-questions" element={<GenericPage />} />
 
         {/* Ohio & North Dakota service detail pages (by slug) */}
-        <Route path="/:slug" element={<ServiceDetail />} />
+        <Route path="/:slug" element={<PublicSlugResolver />} />
 
         <Route path="*" element={<NotFound />} />
       </Route>

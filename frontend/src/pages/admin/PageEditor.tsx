@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import api from "../../api/client";
+import { adminPath } from "../../config";
 import type { Page, PageSection } from "../../types";
 import DragReorderList from "../../components/admin/DragReorderList";
 
@@ -17,20 +18,65 @@ const PageEditor: React.FC = () => {
   const { slug } = useParams();
   const [page, setPage] = useState<Page | null>(null);
   const [sections, setSections] = useState<PageSection[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [addingType, setAddingType] = useState("text");
 
-  const load = () => {
-    api.get(`/pages/${slug}/`).then((res) => {
+  const load = async () => {
+    setLoading(true);
+    setLoadError("");
+    setPage(null);
+
+    if (!slug) {
+      setLoadError("No page slug was provided in the URL.");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await api.get(`/pages/${slug}/`);
       setPage(res.data);
-      setSections([...res.data.sections].sort((a: PageSection, b: PageSection) => a.sort_order - b.sort_order));
-    });
+      setSections(
+        [...(res.data.sections || [])].sort(
+          (a: PageSection, b: PageSection) => a.sort_order - b.sort_order
+        )
+      );
+    } catch (err: any) {
+      const status = err?.response?.status;
+      if (status === 404) {
+        setLoadError(`The CMS could not find a page with the slug "${slug}".`);
+      } else if (status === 401 || status === 403) {
+        setLoadError("You do not have permission to load this page. Please sign in again.");
+      } else if (!err?.response) {
+        setLoadError("The CMS could not reach the API. Check your connection and try again.");
+      } else {
+        setLoadError(`The page could not be loaded (HTTP ${status || "error"}). Please try again.`);
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(load, [slug]);
+  useEffect(() => {
+    void load();
+  }, [slug]);
 
-  if (!page) return <div className="adm-empty">Loading{"\u2026"}</div>;
+  if (loading) return <div className="adm-empty">Loading page…</div>;
+
+  if (!page) {
+    return (
+      <div className="adm-panel">
+        <h1>Unable to Open Page</h1>
+        <p role="alert">{loadError || "The page could not be loaded."}</p>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button className="adm-btn" onClick={() => void load()}>Try Again</button>
+          <Link className="adm-btn secondary" to={adminPath("/pages")}>Back to Pages</Link>
+        </div>
+      </div>
+    );
+  }
 
   const updatePageField = (field: keyof Page, value: any) => setPage({ ...page, [field]: value });
 
